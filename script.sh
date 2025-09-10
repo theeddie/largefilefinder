@@ -1,4 +1,15 @@
-#!/bin/bash
+echo ""
+echo -e "${BLUE}Filesystem Detection (Enhanced):${NC}"
+echo -e "• ✅ Includes: ext4, xfs, btrfs, zfs, ntfs (local block devices)"  
+echo -e "• ✅ Includes: Local drives mounted anywhere (/mnt, /media, etc.)"
+echo -e "• ❌ Excludes: NFS, CIFS, S3FS, SSHFS, rclone (network/remote)"
+echo -e "• ❌ Excludes: Any FUSE mount with ':' in source (remote indicators)"
+echo -e "• ❌ Excludes: Mount command detection of rclone processes"
+echo ""
+echo -e "${BLUE}Tips:${NC}"
+echo -e "• Enhanced rclone detection using mount command"
+echo -e "• Checks /proc/mounts for additional remote mount detection" 
+echo -e "• Use depth 2-3 for fastest results on large local drives"#!/bin/bash
 
 # Fast Large Files and Directories Finder
 # Optimized version for speed
