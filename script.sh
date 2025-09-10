@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Large Files and Directories Finder
-# Finds directories and individual files over specified size threshold
+# Fast Large Files and Directories Finder
+# Optimized version for speed
 
 # Colors for output
 RED='\033[0;31m'
@@ -11,160 +11,239 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default settings
-SEARCH_PATH="${1:-.}"  # Default to current directory if no path provided
-MIN_SIZE="${2:-1G}"    # Default to 1GB if no size provided
-MAX_DEPTH="${3:-10}"   # Default max depth to avoid infinite recursion
+SEARCH_PATH="${1:-.}"
+MIN_SIZE="${2:-1G}"
+MAX_DEPTH="${3:-5}"  # Reduced default depth for speed
 
 # Function to display usage
 show_usage() {
     echo "Usage: $0 [search_path] [min_size] [max_depth]"
     echo "  search_path: Directory to search (default: current directory)"
     echo "  min_size: Minimum size threshold (default: 1G)"
-    echo "            Examples: 1G, 500M, 2048K, 1073741824 (bytes)"
-    echo "  max_depth: Maximum directory depth to search (default: 10)"
+    echo "  max_depth: Maximum directory depth (default: 5 for speed)"
     echo ""
     echo "Examples:"
-    echo "  $0                    # Search current dir for files/dirs > 1GB"
-    echo "  $0 /home 500M 5      # Search /home for files/dirs > 500MB, max depth 5"
-    echo "  $0 /var/log 100M     # Search /var/log for files/dirs > 100MB"
+    echo "  $0                    # Fast search current dir > 1GB"
+    echo "  $0 /home 500M 3      # Search /home > 500MB, depth 3"
+    echo "  $0 /var 100M 2       # Quick search /var > 100MB, depth 2"
 }
 
-# Function to convert size to human readable format
+# Function to convert size to human readable
 human_readable() {
     local size=$1
     if (( size >= 1073741824 )); then
-        printf "%.2fG" $(echo "scale=2; $size / 1073741824" | bc -l)
+        printf "%.1fG" $(awk "BEGIN {printf \"%.1f\", $size/1073741824}")
     elif (( size >= 1048576 )); then
-        printf "%.2fM" $(echo "scale=2; $size / 1048576" | bc -l)
+        printf "%.1fM" $(awk "BEGIN {printf \"%.1f\", $size/1048576}")
     elif (( size >= 1024 )); then
-        printf "%.2fK" $(echo "scale=2; $size / 1024" | bc -l)
+        printf "%.1fK" $(awk "BEGIN {printf \"%.1f\", $size/1024}")
     else
         printf "%dB" $size
     fi
 }
 
-# Function to convert size specification to bytes
-size_to_bytes() {
-    local size_spec=$1
-    local number=$(echo $size_spec | sed 's/[^0-9.]//g')
-    local unit=$(echo $size_spec | sed 's/[0-9.]//g' | tr '[:lower:]' '[:upper:]')
-    
-    case $unit in
-        "G"|"GB") echo $(echo "$number * 1073741824" | bc -l | cut -d. -f1) ;;
-        "M"|"MB") echo $(echo "$number * 1048576" | bc -l | cut -d. -f1) ;;
-        "K"|"KB") echo $(echo "$number * 1024" | bc -l | cut -d. -f1) ;;
-        "") echo $number ;;
-        *) echo $number ;;
-    esac
-}
-
-# Check if help is requested
+# Check if help requested
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     show_usage
     exit 0
 fi
 
-# Check if required tools are available
-for tool in find du bc; do
-    if ! command -v $tool &> /dev/null; then
-        echo -e "${RED}Error: $tool is not installed${NC}"
-        exit 1
-    fi
-done
-
-# Validate search path
+# Validate path
 if [[ ! -d "$SEARCH_PATH" ]]; then
     echo -e "${RED}Error: Directory '$SEARCH_PATH' does not exist${NC}"
     exit 1
 fi
 
-# Convert size threshold to bytes for comparison
-SIZE_BYTES=$(size_to_bytes $MIN_SIZE)
-
-echo -e "${BLUE}=== Large Files and Directories Finder ===${NC}"
-echo -e "${YELLOW}Search Path:${NC} $SEARCH_PATH"
-echo -e "${YELLOW}Minimum Size:${NC} $MIN_SIZE (${SIZE_BYTES} bytes)"
-echo -e "${YELLOW}Maximum Depth:${NC} $MAX_DEPTH"
+echo -e "${BLUE}=== Fast Large Files Finder ===${NC}"
+echo -e "${YELLOW}Path:${NC} $SEARCH_PATH | ${YELLOW}Size:${NC} $MIN_SIZE | ${YELLOW}Depth:${NC} $MAX_DEPTH"
 echo ""
 
-# Create temporary files for results
-TEMP_FILES=$(mktemp)
-TEMP_DIRS=$(mktemp)
+echo -e "${GREEN}Finding large files (>$MIN_SIZE)...${NC}"
 
-# Clean up temp files on exit
-trap "rm -f $TEMP_FILES $TEMP_DIRS" EXIT
-
-echo -e "${GREEN}Scanning for large files...${NC}"
-
-# Find large individual files
-find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE 2>/dev/null | while read -r file; do
-    if [[ -r "$file" ]]; then
-        size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
-        if [[ -n "$size" && $size -gt $SIZE_BYTES ]]; then
-            echo "$size|$file" >> $TEMP_FILES
-        fi
-    fi
-done
-
-echo -e "${GREEN}Scanning for large directories...${NC}"
-
-# Find large directories
-find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type d 2>/dev/null | while read -r dir; do
-    if [[ -r "$dir" ]]; then
-        # Get directory size (including subdirectories)
-        size=$(du -sb "$dir" 2>/dev/null | cut -f1)
-        if [[ -n "$size" && $size -gt $SIZE_BYTES ]]; then
-            echo "$size|$dir" >> $TEMP_DIRS
-        fi
-    fi
-done
+# Fast file search - single find command, sorted immediately
+echo -e "${BLUE}=== LARGE FILES ===${NC}"
+find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE -exec ls -lh {} + 2>/dev/null | \
+    sort -k5 -hr | \
+    head -20 | \
+    awk '{printf "\033[0;31m%s\033[0m\t%s/%s\n", $5, $(NF-2), $NF}' 2>/dev/null || \
+find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE -ls 2>/dev/null | \
+    sort -k7 -nr | \
+    head -20 | \
+    awk '{size=$7; if(size>=1073741824) sz=sprintf("%.1fG",size/1073741824); else if(size>=1048576) sz=sprintf("%.1fM",size/1048576); else if(size>=1024) sz=sprintf("%.1fK",size/1024); else sz=size"B"; printf "\033[0;31m%s\033[0m\t%s\n", sz, $11}'
 
 echo ""
-echo -e "${BLUE}=== LARGE FILES (over $MIN_SIZE) ===${NC}"
+echo -e "${GREEN}Finding large directories (top-level only for speed)...${NC}"
 
-if [[ -s $TEMP_FILES ]]; then
-    # Sort files by size (largest first) and display
-    sort -t'|' -k1 -nr $TEMP_FILES | while IFS='|' read -r size file; do
-        readable_size=$(human_readable $size)
-        echo -e "${RED}$readable_size${NC}\t$file"
-    done
+# Fast directory search - limited depth for speed
+echo -e "${BLUE}=== LARGE DIRECTORIES ===${NC}"
+if command -v du >/dev/null 2>&1; then
+    # Use du with limited depth for speed
+    du -h --max-depth=$MAX_DEPTH "$SEARCH_PATH" 2>/dev/null | \
+        awk -v min="$MIN_SIZE" '
+        BEGIN {
+            if(min ~ /G$/) minbytes = substr(min,1,length(min)-1) * 1024 * 1024 * 1024
+            else if(min ~ /M$/) minbytes = substr(min,1,length(min)-1) * 1024 * 1024  
+            else if(min ~ /K$/) minbytes = substr(min,1,length(min)-1) * 1024
+            else minbytes = min
+        }
+        {
+            size = $1
+            bytes = 0
+            if(size ~ /G$/) bytes = substr(size,1,length(size)-1) * 1024 * 1024 * 1024
+            else if(size ~ /M$/) bytes = substr(size,1,length(size)-1) * 1024 * 1024
+            else if(size ~ /K$/) bytes = substr(size,1,length(size)-1) * 1024
+            else bytes = size
+            
+            if(bytes >= minbytes) {
+                printf "\033[0;31m%s\033[0m\t%s\n", $1, $2
+            }
+        }' | \
+        sort -k1 -hr | \
+        head -15
 else
-    echo -e "${YELLOW}No large files found${NC}"
+    echo -e "${YELLOW}du command not available, skipping directory sizes${NC}"
 fi
 
 echo ""
-echo -e "${BLUE}=== LARGE DIRECTORIES (over $MIN_SIZE) ===${NC}"
+echo -e "${GREEN}Quick summary:${NC}"
 
-if [[ -s $TEMP_DIRS ]]; then
-    # Sort directories by size (largest first) and display
-    sort -t'|' -k1 -nr $TEMP_DIRS | while IFS='|' read -r size dir; do
-        readable_size=$(human_readable $size)
-        echo -e "${RED}$readable_size${NC}\t$dir"
-    done
+# Quick counts
+file_count=$(find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE 2>/dev/null | wc -l)
+echo -e "${YELLOW}Large files found:${NC} $file_count (showing top 20)"
+
+if command -v du >/dev/null 2>&1; then
+    dir_count=$(du -h --max-depth=$MAX_DEPTH "$SEARCH_PATH" 2>/dev/null | awk -v min="$MIN_SIZE" 'BEGIN{if(min~/G$/)mb=substr(min,1,length(min)-1)*1024;else if(min~/M$/)mb=substr(min,1,length(min)-1);else mb=1024} {if($1~/G$/)sz=substr($1,1,length($1)-1)*1024;else if($1~/M$/)sz=substr($1,1,length($1)-1);else sz=0; if(sz>=mb)c++} END{print c+0}')
+    echo -e "${YELLOW}Large directories found:${NC} $dir_count (showing top 15)"
+fi
+
+echo ""
+echo -e "${BLUE}Tips for faster searches:${NC}"
+echo -e "• Use smaller max depth (2-3) for very fast results"
+echo -e "• Increase depth slowly if you need deeper search"
+echo -e "• For complete scan, use: find /path -size +1G -ls"
+
+echo -e "${GREEN}Done!${NC}"#!/bin/bash
+
+# Fast Large Files and Directories Finder
+# Optimized version for speed
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Default settings
+SEARCH_PATH="${1:-.}"
+MIN_SIZE="${2:-1G}"
+MAX_DEPTH="${3:-5}"  # Reduced default depth for speed
+
+# Function to display usage
+show_usage() {
+    echo "Usage: $0 [search_path] [min_size] [max_depth]"
+    echo "  search_path: Directory to search (default: current directory)"
+    echo "  min_size: Minimum size threshold (default: 1G)"
+    echo "  max_depth: Maximum directory depth (default: 5 for speed)"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Fast search current dir > 1GB"
+    echo "  $0 /home 500M 3      # Search /home > 500MB, depth 3"
+    echo "  $0 /var 100M 2       # Quick search /var > 100MB, depth 2"
+}
+
+# Function to convert size to human readable
+human_readable() {
+    local size=$1
+    if (( size >= 1073741824 )); then
+        printf "%.1fG" $(awk "BEGIN {printf \"%.1f\", $size/1073741824}")
+    elif (( size >= 1048576 )); then
+        printf "%.1fM" $(awk "BEGIN {printf \"%.1f\", $size/1048576}")
+    elif (( size >= 1024 )); then
+        printf "%.1fK" $(awk "BEGIN {printf \"%.1f\", $size/1024}")
+    else
+        printf "%dB" $size
+    fi
+}
+
+# Check if help requested
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_usage
+    exit 0
+fi
+
+# Validate path
+if [[ ! -d "$SEARCH_PATH" ]]; then
+    echo -e "${RED}Error: Directory '$SEARCH_PATH' does not exist${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}=== Fast Large Files Finder ===${NC}"
+echo -e "${YELLOW}Path:${NC} $SEARCH_PATH | ${YELLOW}Size:${NC} $MIN_SIZE | ${YELLOW}Depth:${NC} $MAX_DEPTH"
+echo ""
+
+echo -e "${GREEN}Finding large files (>$MIN_SIZE)...${NC}"
+
+# Fast file search - single find command, sorted immediately
+echo -e "${BLUE}=== LARGE FILES ===${NC}"
+find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE -exec ls -lh {} + 2>/dev/null | \
+    sort -k5 -hr | \
+    head -20 | \
+    awk '{printf "\033[0;31m%s\033[0m\t%s/%s\n", $5, $(NF-2), $NF}' 2>/dev/null || \
+find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE -ls 2>/dev/null | \
+    sort -k7 -nr | \
+    head -20 | \
+    awk '{size=$7; if(size>=1073741824) sz=sprintf("%.1fG",size/1073741824); else if(size>=1048576) sz=sprintf("%.1fM",size/1048576); else if(size>=1024) sz=sprintf("%.1fK",size/1024); else sz=size"B"; printf "\033[0;31m%s\033[0m\t%s\n", sz, $11}'
+
+echo ""
+echo -e "${GREEN}Finding large directories (top-level only for speed)...${NC}"
+
+# Fast directory search - limited depth for speed
+echo -e "${BLUE}=== LARGE DIRECTORIES ===${NC}"
+if command -v du >/dev/null 2>&1; then
+    # Use du with limited depth for speed
+    du -h --max-depth=$MAX_DEPTH "$SEARCH_PATH" 2>/dev/null | \
+        awk -v min="$MIN_SIZE" '
+        BEGIN {
+            if(min ~ /G$/) minbytes = substr(min,1,length(min)-1) * 1024 * 1024 * 1024
+            else if(min ~ /M$/) minbytes = substr(min,1,length(min)-1) * 1024 * 1024  
+            else if(min ~ /K$/) minbytes = substr(min,1,length(min)-1) * 1024
+            else minbytes = min
+        }
+        {
+            size = $1
+            bytes = 0
+            if(size ~ /G$/) bytes = substr(size,1,length(size)-1) * 1024 * 1024 * 1024
+            else if(size ~ /M$/) bytes = substr(size,1,length(size)-1) * 1024 * 1024
+            else if(size ~ /K$/) bytes = substr(size,1,length(size)-1) * 1024
+            else bytes = size
+            
+            if(bytes >= minbytes) {
+                printf "\033[0;31m%s\033[0m\t%s\n", $1, $2
+            }
+        }' | \
+        sort -k1 -hr | \
+        head -15
 else
-    echo -e "${YELLOW}No large directories found${NC}"
+    echo -e "${YELLOW}du command not available, skipping directory sizes${NC}"
 fi
 
 echo ""
-echo -e "${BLUE}=== SUMMARY ===${NC}"
+echo -e "${GREEN}Quick summary:${NC}"
 
-# Count results
-file_count=$(wc -l < $TEMP_FILES 2>/dev/null || echo 0)
-dir_count=$(wc -l < $TEMP_DIRS 2>/dev/null || echo 0)
+# Quick counts
+file_count=$(find "$SEARCH_PATH" -maxdepth $MAX_DEPTH -type f -size +$MIN_SIZE 2>/dev/null | wc -l)
+echo -e "${YELLOW}Large files found:${NC} $file_count (showing top 20)"
 
-echo -e "${YELLOW}Large files found:${NC} $file_count"
-echo -e "${YELLOW}Large directories found:${NC} $dir_count"
-
-# Calculate total size
-if [[ $file_count -gt 0 ]]; then
-    total_file_size=$(awk -F'|' '{sum += $1} END {print sum}' $TEMP_FILES)
-    echo -e "${YELLOW}Total size of large files:${NC} $(human_readable $total_file_size)"
-fi
-
-if [[ $dir_count -gt 0 ]]; then
-    total_dir_size=$(awk -F'|' '{sum += $1} END {print sum}' $TEMP_DIRS)
-    echo -e "${YELLOW}Total size of large directories:${NC} $(human_readable $total_dir_size)"
+if command -v du >/dev/null 2>&1; then
+    dir_count=$(du -h --max-depth=$MAX_DEPTH "$SEARCH_PATH" 2>/dev/null | awk -v min="$MIN_SIZE" 'BEGIN{if(min~/G$/)mb=substr(min,1,length(min)-1)*1024;else if(min~/M$/)mb=substr(min,1,length(min)-1);else mb=1024} {if($1~/G$/)sz=substr($1,1,length($1)-1)*1024;else if($1~/M$/)sz=substr($1,1,length($1)-1);else sz=0; if(sz>=mb)c++} END{print c+0}')
+    echo -e "${YELLOW}Large directories found:${NC} $dir_count (showing top 15)"
 fi
 
 echo ""
-echo -e "${GREEN}Scan completed!${NC}"
+echo -e "${BLUE}Tips for faster searches:${NC}"
+echo -e "• Use smaller max depth (2-3) for very fast results"
+echo -e "• Increase depth slowly if you need deeper search"
+echo -e "• For complete scan, use: find /path -size +1G -ls"
+
+echo -e "${GREEN}Done!${NC}"
