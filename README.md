@@ -29,12 +29,14 @@ Save it to a file (e.g., find_large.sh)
 Make it executable: chmod +x find_large.sh
 Run it: ./find_large.sh [path] [size] [depth]
 
-Examples:
-bash# Find everything over 1GB in current directory
-./find_large.sh
+# Ultra-fast (depth 2, current directory)
+./find_large.sh . 1G 2
 
-# Find everything over 500MB in /home directory, max depth 3
+# Fast (depth 3, specific path)  
 ./find_large.sh /home 500M 3
 
-# Find everything over 100MB in /var directory
+# Balanced (default depth 5)
 ./find_large.sh /var 100M
+
+# If you need complete results, use native find:
+find /path -size +1G -ls | head -50
